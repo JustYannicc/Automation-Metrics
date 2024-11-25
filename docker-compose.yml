@@ -3,7 +3,7 @@ services:
   automation-metrics:
     build: .
     ports:
-      - "8069:8070"
+      - "8070:8070"
     volumes:
       - ./data:/app/data 
     restart: unless-stopped
