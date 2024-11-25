@@ -1,0 +1,12 @@
+{
+    "name": "automation-metrics",
+    "version": "1.0.0",
+    "description": "Automation metrics dashboard",
+    "main": "server.js",
+    "scripts": {
+      "start": "node server.js"
+    },
+    "dependencies": {
+      "express": "^4.18.2"
+    }
+  }
