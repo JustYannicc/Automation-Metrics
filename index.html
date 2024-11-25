@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation Metrics</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .big-number {
+            font-size: 48px;
+            font-weight: bold;
+            color: #2563eb;
+            margin: 10px 0;
+        }
+        .money { color: #16a34a; }
+        .label {
+            color: #666;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .update-time {
+            color: #666;
+            font-size: 12px;
+            text-align: right;
+        }
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .project-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .project-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .settings-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 500px;
+            margin: 50px auto;
+        }
+        .rate-history {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .error { color: #dc2626; }
+        .button-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Automation Metrics</h1>
+    
+    <div class="stats-card">
+        <div class="label">Total Impact</div>
+        <div class="stat-row">
+            <div>
+                <div class="big-number" id="total-automations">0</div>
+                <div class="label">Automations</div>
+            </div>
+            <div>
+                <div class="big-number" id="total-time">0</div>
+                <div class="label">Hours Saved</div>
+            </div>
+            <div>
+                <div class="big-number money" id="total-money">CHF 0</div>
+                <div class="label">Money Saved</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="project-grid" class="project-grid"></div>
+
+    <p class="update-time">Last updated: <span id="update-time">Never</span></p>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <h2>Update Hourly Rate</h2>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="settingsPassword">
+            </div>
+            <div class="form-group">
+                <label>Project</label>
+                <select id="projectSelect"></select>
+            </div>
+            <div class="form-group">
+                <label>New Hourly Rate (CHF)</label>
+                <input type="number" id="newRate" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Effective Date</label>
+                <input type="datetime-local" id="effectiveDate">
+            </div>
+            <div id="rateHistory" class="rate-history">
+                <h3>Rate History</h3>
+                <!-- Rate history will be inserted here -->
+            </div>
+            <div id="errorMessage" class="error"></div>
+            <div class="button-container">
+                <button onclick="updateRate()" class="settings-btn">Update</button>
+                <button onclick="closeSettings()" class="settings-btn" style="background: #666;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = null;
+        let currentStats = null;
+    
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('de-CH', { 
+                style: 'currency', 
+                currency: 'CHF',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        }
+    
+        function formatTime(minutes) {
+            return (minutes / 60).toFixed(1);
+        }
+    
+
+        function getApplicableRate(timestamp, rateHistory) {
+            // Sort rate history by date, newest first
+            const sortedHistory = [...rateHistory].sort((a, b) => 
+                new Date(b.start_date) - new Date(a.start_date)
+            );
+            
+            // Find the rate that was active at the time
+            for (const entry of sortedHistory) {
+                if (new Date(timestamp) >= new Date(entry.start_date)) {
+                    return entry.rate;
+                }
+            }
+            
+            // If no applicable rate found, use the oldest rate or 0
+            return sortedHistory[sortedHistory.length - 1]?.rate || 0;
+        }
+        
+        // Update the createProjectCard function to use historical rates:
+function createProjectCard(name, data, rateHistory) {
+    let totalMoneySaved = 0;
+    
+    // Calculate money saved using historical rates
+    data.automation_history?.forEach(entry => {
+        const applicableRate = getApplicableRate(entry.timestamp, rateHistory);
+        totalMoneySaved += (entry.time_saved_minutes / 60) * applicableRate;
+    });
+
+    return `
+        <div class="project-card">
+            <div class="project-title">
+                ${name}
+                <button onclick="openSettings('${name}')" class="settings-btn">Settings</button>
+            </div>
+            <div class="stat-row">
+                <span>Current Rate:</span>
+                <span>${formatMoney(rateHistory[rateHistory.length - 1]?.rate || 0)}/hr</span>
+            </div>
+            <div class="stat-row">
+                <span>Automations:</span>
+                <span>${data.automations}</span>
+            </div>
+            <div class="stat-row">
+                <span>Hours Saved:</span>
+                <span>${formatTime(data.time_saved_minutes)}</span>
+            </div>
+            <div class="stat-row">
+                <span>Steps Automated:</span>
+                <span>${data.steps_saved}</span>
+            </div>
+            <div class="stat-row">
+                <span>Money Saved:</span>
+                <span>${formatMoney(totalMoneySaved)}</span>
+            </div>
+        </div>
+    `;
+}
+
+        function openSettings(projectName = null) {
+            const modal = document.getElementById('settingsModal');
+            const select = document.getElementById('projectSelect');
+            const effectiveDate = document.getElementById('effectiveDate');
+            
+            // Set default effective date to now
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            effectiveDate.value = now.toISOString().slice(0, 16);
+            
+            // Update project select options
+            select.innerHTML = Object.keys(currentStats.projects)
+                .map(name => `<option value="${name}" ${name === projectName ? 'selected' : ''}>${name}</option>`)
+                .join('');
+            
+            updateRateHistory();
+            modal.style.display = 'block';
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+            document.getElementById('errorMessage').textContent = '';
+            document.getElementById('settingsPassword').value = '';
+            document.getElementById('newRate').value = '';
+        }
+
+        function updateRateHistory() {
+            const project = document.getElementById('projectSelect').value;
+            const history = currentConfig.hourly_rates[project]?.history || [];
+            const historyHtml = history
+                .map(entry => `
+                    <div class="stat-row">
+                        <span>${new Date(entry.start_date).toLocaleString()}</span>
+                        <span>${formatMoney(entry.rate)}/hr</span>
+                    </div>
+                `)
+                .join('');
+            document.getElementById('rateHistory').innerHTML = `
+                <h3>Rate History</h3>
+                ${historyHtml || '<div>No rate history available</div>'}
+            `;
+        }
+
+        async function updateRate() {
+            const password = document.getElementById('settingsPassword').value;
+            const project = document.getElementById('projectSelect').value;
+            const newRate = parseFloat(document.getElementById('newRate').value);
+            const effectiveDate = document.getElementById('effectiveDate').value;
+            const errorDiv = document.getElementById('errorMessage');
+
+            if (!password || !newRate || !effectiveDate) {
+                errorDiv.textContent = 'Please fill in all fields';
+                return;
+            }
+
+            try {
+                const response = await fetch('/update-rate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password,
+                        project,
+                        new_rate: newRate,
+                        effective_date: new Date(effectiveDate).toISOString()
+                    })
+                });
+
+                if (response.ok) {
+                    await updateStats();
+                    closeSettings();
+                } else {
+                    const error = await response.text();
+                    errorDiv.textContent = error || 'Update failed';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Failed to update rate. Please try again later.';
+                console.error('Error:', error);
+            }
+        }
+
+        // Update the updateStats function:
+async function updateStats() {
+    try {
+        const [statsResponse, configResponse] = await Promise.all([
+            fetch('/stats.json'),
+            fetch('/config.json')
+        ]);
+        
+        currentStats = await statsResponse.json();
+        currentConfig = await configResponse.json();
+        
+        document.getElementById('total-automations').textContent = currentStats.total_automations;
+        document.getElementById('total-time').textContent = formatTime(currentStats.total_time_saved);
+        
+        let totalMoneySaved = 0;
+        const projectGrid = document.getElementById('project-grid');
+        projectGrid.innerHTML = '';
+        
+        Object.entries(currentStats.projects).forEach(([projectName, projectData]) => {
+            const rateHistory = currentConfig.hourly_rates[projectName]?.history || [];
+            
+            // Calculate money saved for this project
+            let projectMoney = 0;
+            projectData.automation_history?.forEach(entry => {
+                const applicableRate = getApplicableRate(entry.timestamp, rateHistory);
+                projectMoney += (entry.time_saved_minutes / 60) * applicableRate;
+            });
+            
+            totalMoneySaved += projectMoney;
+            projectGrid.innerHTML += createProjectCard(projectName, projectData, rateHistory);
+        });
+        
+        document.getElementById('total-money').textContent = formatMoney(totalMoneySaved);
+        document.getElementById('update-time').textContent = new Date(currentStats.last_updated).toLocaleString();
+    } catch (error) {
+        console.error('Error fetching stats:', error);
+    }
+}
+
+        // Update stats on load and periodically
+        updateStats();
+        setInterval(updateStats, 60000);
+
+        // Close modal if clicking outside
+        window.onclick = function(event) {
+            if (event.target === document.getElementById('settingsModal')) {
+                closeSettings();
+            }
+        }
+
+        // Update rate history when project selection changes
+        document.getElementById('projectSelect').addEventListener('change', updateRateHistory);
+    </script>
+</body>
+</html>
